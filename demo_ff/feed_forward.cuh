@@ -33,7 +33,7 @@ template <typename T>
 void init_ff_layer(FFLayer<T> &ff_layer, uint in_dim, uint hidden_dim,
                    uint seq_len, ulong seed) {
   ff_layer.in_dim = in_dim;
-  ff_layer.hidden_dim = 4 * hidden_dim;
+  ff_layer.hidden_dim = hidden_dim;
 
   std::mt19937 gen(seed);
   std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);

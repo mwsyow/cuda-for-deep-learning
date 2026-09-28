@@ -1,6 +1,5 @@
 #include "feed_forward.cuh"
 #include <cmath>
-#include <vector>
 
 #pragma once
 
