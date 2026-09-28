@@ -51,8 +51,8 @@ void is_ff_layer_equal(FFLayer<float> ref_layer, FFLayer<half> res_layer,
   title("ReLU activation");
   is_equal(ref_layer.X_relu, res_layer.X_relu, seq_len * ref_layer.hidden_dim);
 
-  std::cout << "\nTransformer block\n";
-  title("Final output");
+
+  title("Final output (W2)");
   is_equal(ref, res, seq_len * ref_layer.in_dim);
 }
 
@@ -89,9 +89,9 @@ void print_time_statistics(const TimeStats &stats) {
               << std::setw(12) << ms << " ms\n";
   };
 
-  std::cout << "\n=== GPU timing breakdown ===\n"
-            << "Single diagnostic run; synchronization after each stage.\n\n"
-            << std::fixed << std::setprecision(3) << "Attention\n";
+  std::cout << "\n=== Average GPU timing breakdown ===\n"
+            << "Measured runs only; warmup excluded. Synchronization after each stage.\n\n"
+            << std::fixed << std::setprecision(3);
   std::cout << "\nFeed-forward\n";
   print("Hidden expansion (W1)", stats.X_w1);
   print("ReLU activation", stats.X_relu);
@@ -99,7 +99,7 @@ void print_time_statistics(const TimeStats &stats) {
   print("Feed-forward subtotal", stats.fflayer);
   print("Feed-forward all reduce", stats.all_reduce_fflayer);
   std::cout << "  ---------------------------------------------\n";
-  print("Full block total", stats.total);
+  print("Feed-forward total", stats.total);
   std::cout.flags(previous_flags);
   std::cout.precision(previous_precision);
 }

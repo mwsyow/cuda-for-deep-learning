@@ -9,6 +9,9 @@
 #include <cuda_runtime_api.h>
 #include <driver_types.h>
 #include <exception>
+#include <fstream>
+#include <iomanip>
+#include <locale>
 #include <iostream>
 #include <limits>
 #include <mpi.h>
@@ -26,6 +29,8 @@ struct CliOptions {
   uint warmup = 1;
   uint num_runs = 1;
   bool multi_gpu = false;
+  bool save_stats = false;
+  std::string stats_path = "stats.csv";
   bool help = false;
 };
 
@@ -34,12 +39,13 @@ void print_usage(const char *program) {
             << "  --xseed N          Input seed (default: 7)\n"
             << "  --wseed N          Weight seed (default: 42)\n"
             << "  --in_dim N         Input width (default: 128)\n"
-            << "  --hidden_dim N     Base hidden width\n"
-               "(default: 4 * 128)\n"
+            << "  --hidden_dim N     Hidden width (default: 512)\n"
             << "  --seq_len N        Sequence length (default: 64)\n"
             << "  --warmup N         Warmup iterations (default: 1)\n"
             << "  --num_runs N       Number of run iterations (default: 1)\n"
             << "  --multi_gpu BOOL   true/false or 1/0 (default: false)\n"
+            << "  --save_stats BOOL  Save average timings as CSV (default: false)\n"
+            << "  --stats_path PATH  CSV output file, overwritten (default: stats.csv)\n"
             << "  --help             Show this help\n"
             << "Options accept --name value or --name=value; hyphens and "
                "underscores are accepted.\n";
@@ -63,18 +69,25 @@ CliOptions parse_cli_arguments(int argc, char *argv[]) {
     std::replace(name.begin() + 2, name.end(), '-', '_');
     if (name != "--xseed" && name != "--wseed" && name != "--in_dim" &&
         name != "--hidden_dim" && name != "--seq_len" &&
-        name != "--multi_gpu" && name != "--warmup" && name != "--num_runs")
+        name != "--multi_gpu" && name != "--warmup" && name != "--num_runs" &&
+        name != "--save_stats" && name != "--stats_path")
       throw std::invalid_argument("Unknown option: " + name);
     if (equals == std::string::npos) {
       if (i + 1 == argc || std::string(argv[i + 1]).compare(0, 2, "--") == 0)
         throw std::invalid_argument("Missing value for " + name);
       value = argv[++i];
     }
-    if (name == "--multi_gpu") {
+    if (name == "--stats_path") {
+      if (value.empty()) throw std::invalid_argument("--stats_path must not be empty");
+      options.stats_path = value;
+      continue;
+    }
+    if (name == "--multi_gpu" || name == "--save_stats") {
+      bool &flag = name == "--multi_gpu" ? options.multi_gpu : options.save_stats;
       if (value == "true" || value == "1")
-        options.multi_gpu = true;
+        flag = true;
       else if (value == "false" || value == "0")
-        options.multi_gpu = false;
+        flag = false;
       else
         throw std::invalid_argument(name + " expects true, false, 1, or 0");
       continue;
@@ -107,6 +120,25 @@ CliOptions parse_cli_arguments(int argc, char *argv[]) {
   return options;
 }
 
+// Write one summary row; stats contains averages over measured runs, excluding warmup.
+void save_time_statistics_csv(const TimeStats &stats, const CliOptions &options,
+                              int world_size) {
+  std::ofstream file(options.stats_path);
+  if (!file) throw std::runtime_error("Cannot open stats file: " + options.stats_path);
+  file.imbue(std::locale::classic());
+  file << "xseed,wseed,in_dim,hidden_dim,seq_len,warmup,num_runs,multi_gpu,world_size,"
+          "X_w1_ms,X_relu_ms,X_w2_ms,fflayer_ms,all_reduce_fflayer_ms,total_ms\n";
+  file << std::setprecision(std::numeric_limits<float>::max_digits10)
+       << options.xseed << ',' << options.wseed << ',' << options.in_dim << ','
+       << options.hidden_dim << ',' << options.seq_len << ',' << options.warmup << ','
+       << options.num_runs << ',' << (options.multi_gpu ? "true" : "false") << ','
+       << world_size << ',' << stats.X_w1 << ',' << stats.X_relu << ','
+       << stats.X_w2 << ',' << stats.fflayer << ',' << stats.all_reduce_fflayer
+       << ',' << stats.total << '\n';
+  file.close();
+  if (!file) throw std::runtime_error("Failed to write stats file: " + options.stats_path);
+}
+
 int main(int argc, char *argv[]) {
   //-------------------------------------------------------------------------------
   // MPI and NCCL startup
@@ -125,6 +157,12 @@ int main(int argc, char *argv[]) {
       std::cerr << e.what() << '\n';
     MPI_Finalize();
     return 1;
+  }
+
+  if (options.help) {
+    if (rank == 0) print_usage(argv[0]);
+    MPI_Finalize();
+    return 0;
   }
 
   ncclUniqueId ncclCommId;
@@ -179,7 +217,7 @@ int main(int argc, char *argv[]) {
                   options.seq_len, options.wseed);
     std::cout << "Transferring weights and allocating GPU caches" << std::endl;
     to_device(ref_layer, device_layer, options.seq_len);
-    std::cout << "Creating input and context" << std::endl;
+    std::cout << "Creating input" << std::endl;
     std::mt19937 gen(options.xseed);
     std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
 
@@ -214,15 +252,17 @@ int main(int argc, char *argv[]) {
   // Correctness check and warmup
   //-------------------------------------------------------------------------------
   if (rank == 0) {
-    std::cout << "Running Feed Forward Layer on CPU for reference" << std::endl;
+    std::cout << "Running feed-forward CPU reference" << std::endl;
     run_ff_layer_cpu(ref_layer, h_X.data(), h_Ref.data(), options.seq_len);
   }
   if (!options.multi_gpu && rank == 0) {
     //-------------------------------------------------------------------------------
     // Warming up on single GPU
     //-------------------------------------------------------------------------------
-    std::cout << "Warming up on single GPU" << std::endl;
+    std::cout << "Single-GPU warmup: " << options.warmup << " iterations" << std::endl;
     for (uint i = 0; i < options.warmup; i++) {
+      if (rank == 0)
+        std::cout << "  Warmup " << i + 1 << "/" << options.warmup << std::endl;
       run_ff_layer_single_gpu(context, device_layer, d_X, d_Res,
                               options.seq_len, stats);
     }
@@ -230,12 +270,16 @@ int main(int argc, char *argv[]) {
     //-------------------------------------------------------------------------------
     // Warming up on multi GPUs
     //-------------------------------------------------------------------------------
-    std::cout << "Warming up on " << world_size << " GPUs" << std::endl;
+    if (rank == 0)
+      std::cout << "Multi-GPU warmup: " << options.warmup << " iterations across "
+                << world_size << " ranks" << std::endl;
     for (uint i = 0; i < options.warmup; i++) {
+      if (rank == 0)
+        std::cout << "  Warmup " << i + 1 << "/" << options.warmup << std::endl;
       run_ff_layer_multi_gpus(context, shard_layer, d_X, d_Res, options.seq_len,
                               stats, ncclComm);
     }
-    std::cout << "Unsharding intermediate results for correctness check"
+    if (rank == 0) std::cout << "Gathering intermediate results for correctness check"
               << std::endl;
     unsharding_intermediate_results(shard_layer, device_layer, options.seq_len,
                                     rank, ncclComm, stream);
@@ -253,7 +297,11 @@ int main(int argc, char *argv[]) {
   //-------------------------------------------------------------------------------
   // Running Demo
   //-------------------------------------------------------------------------------
-  for (int i = 0; i < options.num_runs; i++) {
+  if (rank == 0)
+    std::cout << "Measured feed-forward runs: " << options.num_runs << std::endl;
+  for (uint i = 0; i < options.num_runs; i++) {
+    if (rank == 0)
+      std::cout << "  Run " << i + 1 << "/" << options.num_runs << std::endl;
     if (!options.multi_gpu) {
       run_ff_layer_single_gpu(context, device_layer, d_X, d_Res,
                               options.seq_len, stats);
@@ -266,14 +314,35 @@ int main(int argc, char *argv[]) {
     avg_stats.X_w1 += stats.X_w1;
     avg_stats.X_relu += stats.X_relu;
     avg_stats.X_w2 += stats.X_w2;
+    avg_stats.fflayer += stats.fflayer;
     avg_stats.all_reduce_fflayer += stats.all_reduce_fflayer;
     avg_stats.total += stats.total;
   }
-  print_time_statistics(stats);
+  int exit_status = 0;
+  if (rank == 0) {
+    avg_stats.X_w1 /= options.num_runs;
+    avg_stats.X_relu /= options.num_runs;
+    avg_stats.X_w2 /= options.num_runs;
+    avg_stats.fflayer /= options.num_runs;
+    avg_stats.all_reduce_fflayer /= options.num_runs;
+    avg_stats.total /= options.num_runs;
+    std::cout << "Average over " << options.num_runs << " measured runs\n";
+    print_time_statistics(avg_stats);
+    if (options.save_stats) {
+      try {
+        save_time_statistics_csv(avg_stats, options, world_size);
+        std::cout << "Saved timing statistics to " << options.stats_path << '\n';
+      } catch (const std::exception &error) {
+        std::cerr << error.what() << '\n';
+        exit_status = 1;
+      }
+    }
+  }
+  MPI_Bcast(&exit_status, 1, MPI_INT, 0, MPI_COMM_WORLD);
   //-------------------------------------------------------------------------------
   // Teardown
   //-------------------------------------------------------------------------------
-  std::cout << "\nReleasing layers and CUDA resources..." << std::endl;
+  if (rank == 0) std::cout << "\nReleasing feed-forward layers and CUDA resources..." << std::endl;
   free_device_ff_layer(device_layer);
   free_host_ff_layer(ref_layer);
   free_host_ff_layer(res_layer);
@@ -289,5 +358,6 @@ int main(int argc, char *argv[]) {
   }
   MPI_Finalize();
 
-  std::cout << "Run finished" << std::endl;
+  if (rank == 0) std::cout << "Feed-forward demo finished" << std::endl;
+  return exit_status;
 }
