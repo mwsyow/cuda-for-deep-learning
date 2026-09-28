@@ -76,7 +76,7 @@ void run_ff_layer_multi_gpus(const DeviceContext &context,
   CUDA_CHECK(cudaEventCreate(&start));
   CUDA_CHECK(cudaEventCreate(&stop));
 
-  timed(context, start, stop, stats.total, [&]() {
+  timed(context, total_start, total_stop, stats.total, [&]() {
     timed(context, start, stop, stats.fflayer,
           [&]() { forward_pass_gpu(context, layer, X, Res, seq_len, stats); });
     timed(context, start, stop, stats.all_reduce_fflayer, [&]() {
