@@ -6,6 +6,8 @@
 #include <driver_types.h>
 #include <vector_types.h>
 
+#pragma once
+
 __global__ void naive_softmax_kernel(half *matd, half *resd, uint M, uint N) {
   // Calculate row index for this thread
   uint row = blockDim.x * blockIdx.x + threadIdx.x;

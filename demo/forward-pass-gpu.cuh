@@ -7,27 +7,9 @@
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
 #include <driver_types.h>
+#include <nccl.h>
 
-struct TimeStats {
-  float X_q;
-  float X_k;
-  float X_v;
-  float attention_scores;
-  float attention_weights;
-  float Z;
-  float attention_result;
-  float salayer;
-  float X_w1;
-  float X_relu;
-  float X_w2;
-  float fflayer;
-  float total;
-};
-
-struct DeviceContext {
-  cudaStream_t stream;
-  cublasHandle_t handle;
-};
+#pragma once
 
 template <typename Func>
 void timed(const DeviceContext &context, const cudaEvent_t &start,
@@ -164,10 +146,10 @@ void run_feed_forward_layer_gpu(const DeviceContext &context,
   CUDA_CHECK(cudaEventDestroy(stop));
 }
 
-void run_transformer_block_gpu(const DeviceContext &context,
-                               const TransformerBlock<half> &transformer,
-                               const half *X, half *Res, const uint seq_len,
-                               TimeStats &stats) {
+void run_transformer_block_single_gpu(const DeviceContext &context,
+                                      const TransformerBlock<half> &transformer,
+                                      const half *X, half *Res,
+                                      const uint seq_len, TimeStats &stats) {
 
   cudaEvent_t total_start, total_stop;
   CUDA_CHECK(cudaEventCreate(&total_start));
@@ -185,4 +167,39 @@ void run_transformer_block_gpu(const DeviceContext &context,
 
   CUDA_CHECK(cudaEventDestroy(total_start));
   CUDA_CHECK(cudaEventDestroy(total_stop));
+}
+
+void run_transformer_block_multi_gpus(const DeviceContext &context,
+                                      const TransformerBlock<half> &transformer,
+                                      const half *X, half *Res,
+                                      const uint seq_len, TimeStats &stats,
+                                      ncclComm_t ncclComm) {
+
+  cudaEvent_t start, stop, total_start, total_stop;
+  CUDA_CHECK(cudaEventCreate(&total_start));
+  CUDA_CHECK(cudaEventCreate(&total_stop));
+  CUDA_CHECK(cudaEventCreate(&start));
+  CUDA_CHECK(cudaEventCreate(&stop));
+
+  timed(context, start, stop, stats.total, [&]() {
+    run_attention_layer_gpu(context, transformer, X, transformer.salayer->Res,
+                            seq_len, stats);
+    timed(context, start, stop, stats.all_reduce_salayer, [&]() {
+      NCCL_CHECK(ncclAllReduce(transformer.salayer->Res,
+                               transformer.salayer->Res,
+                               seq_len * transformer.in_dim, ncclHalf, ncclSum,
+                               ncclComm, context.stream));
+    });
+    run_feed_forward_layer_gpu(context, transformer, transformer.salayer->Res,
+                               Res, seq_len, stats);
+    timed(context, start, stop, stats.all_reduce_fflayer, [&]() {
+      NCCL_CHECK(ncclAllReduce(Res, Res, seq_len * transformer.in_dim, ncclHalf,
+                               ncclSum, ncclComm, context.stream));
+    });
+  });
+
+  CUDA_CHECK(cudaEventDestroy(total_start));
+  CUDA_CHECK(cudaEventDestroy(total_stop));
+  CUDA_CHECK(cudaEventDestroy(start));
+  CUDA_CHECK(cudaEventDestroy(stop));
 }

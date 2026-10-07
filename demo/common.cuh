@@ -1,4 +1,6 @@
+#include <cublas_v2.h>
 #include <iostream>
+#include <mpi.h>
 
 #pragma once
 
@@ -8,6 +10,7 @@
     if (error != cudaSuccess) {                                                \
       std::cerr << "CUDA error at " << __FILE__ << ":" << __LINE__ << ":"      \
                 << cudaGetErrorString(error) << std::endl;                     \
+      MPI_Abort(MPI_COMM_WORLD, 1);                                            \
     }                                                                          \
   } while (0);
 
@@ -17,8 +20,10 @@
     if (status != CUBLAS_STATUS_SUCCESS) {                                     \
       std::cerr << "CUBLAS error at " << __FILE__ << ":" << __LINE__ << ": "   \
                 << cublasGetStatusString(status) << std::endl;                 \
+      MPI_Abort(MPI_COMM_WORLD, 1);                                            \
     }                                                                          \
-  } while (0);
+  } while (0)
+;
 
 #define NCCL_CHECK(call)                                                       \
   do {                                                                         \
@@ -26,5 +31,29 @@
     if (result != ncclSuccess) {                                               \
       std::cerr << "NCCL error at " << __FILE__ << ":" << __LINE__ << ": "     \
                 << ncclGetErrorString(result) << std::endl;                    \
+      MPI_Abort(MPI_COMM_WORLD, 1);                                            \
     }                                                                          \
   } while (0);
+
+struct TimeStats {
+  float X_q;
+  float X_k;
+  float X_v;
+  float attention_scores;
+  float attention_weights;
+  float Z;
+  float attention_result;
+  float salayer;
+  float X_w1;
+  float X_relu;
+  float X_w2;
+  float fflayer;
+  float total;
+  float all_reduce_salayer;
+  float all_reduce_fflayer;
+};
+
+struct DeviceContext {
+  cudaStream_t stream;
+  cublasHandle_t handle;
+};

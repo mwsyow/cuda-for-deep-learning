@@ -2,6 +2,8 @@
 #include <cmath>
 #include <vector>
 
+#pragma once
+
 void gemm_cpu(const float *A, const float *B, float *C, uint M, uint N, uint K,
               float alpha, float beta) {
 

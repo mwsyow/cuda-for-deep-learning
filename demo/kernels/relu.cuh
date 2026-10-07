@@ -1,6 +1,8 @@
 #include <cuda_fp16.h>
 #include <driver_types.h>
 
+#pragma once
+
 __global__ void relu_kernel(half *matd, half *resd, uint M, uint N) {
   uint idx = blockIdx.x * blockDim.x + threadIdx.x;
 
