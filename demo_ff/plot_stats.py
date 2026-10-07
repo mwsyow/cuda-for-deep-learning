@@ -5,8 +5,8 @@ One figure, 2x2 subplots sharing the in_dim axis; columns are multi GPU
 including / excluding the NCCL all-reduce, rows are time / throughput:
   1. time incl. NCCL (multi total_ms)
   2. time excl. NCCL (multi fflayer_ms)
-  3. GFLOP/s incl. NCCL (multi total_gflops)
-  4. GFLOP/s excl. NCCL (multi fflayer_gflops)
+  3. TFLOP/s incl. NCCL (multi total_gflops)
+  4. TFLOP/s excl. NCCL (multi fflayer_gflops)
 Single GPU has no all-reduce, so it uses total_ms / total_gflops in every panel.
 """
 import argparse
@@ -28,7 +28,10 @@ def series(rows, multi, metric):
         label = f'multi, {n} GPU{"s" if n > 1 else ""}' if multi else 'single, 1 GPU'
         if len(seq_lens) > 1:
             label += f', seq_len={row["seq_len"]}'
-        groups.setdefault(label, []).append((int(row['in_dim']), float(row[metric])))
+        value = float(row[metric])
+        if metric.endswith('_gflops'):
+            value /= 1000.0  # plot throughput in TFLOP/s
+        groups.setdefault(label, []).append((int(row['in_dim']), value))
     return {label: sorted(points) for label, points in groups.items()}
 
 
@@ -55,9 +58,9 @@ def main():
          'Time, multi GPU incl. NCCL all-reduce'),
         ('total_ms', 'fflayer_ms', 'Execution time (ms)',
          'Time, multi GPU excl. NCCL all-reduce'),
-        ('total_gflops', 'total_gflops', 'Throughput (GFLOP/s)',
+        ('total_gflops', 'total_gflops', 'Throughput (TFLOP/s)',
          'Throughput, multi GPU incl. NCCL all-reduce'),
-        ('total_gflops', 'fflayer_gflops', 'Throughput (GFLOP/s)',
+        ('total_gflops', 'fflayer_gflops', 'Throughput (TFLOP/s)',
          'Throughput, multi GPU excl. NCCL all-reduce'),
     ]
     fig, axes = plt.subplots(2, 2, figsize=(12, 9))
