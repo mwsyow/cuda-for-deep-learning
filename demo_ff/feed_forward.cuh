@@ -46,7 +46,7 @@ void init_ff_layer(FFLayer<T> &ff_layer, uint in_dim, uint hidden_dim,
   ff_layer.X_w1 = static_cast<float *>(
       malloc(seq_len * ff_layer.hidden_dim * sizeof(float)));
   ff_layer.X_relu = static_cast<float *>(
-      malloc(ff_layer.hidden_dim * ff_layer.in_dim * sizeof(float)));
+      malloc(seq_len * ff_layer.hidden_dim * sizeof(float)));
 
   for (uint i = 0; i < ff_layer.in_dim * ff_layer.hidden_dim; i++)
     ff_layer.W1[i] = from_float<T>(distribution(gen));
