@@ -92,7 +92,7 @@ def main():
             first_result = False
             print(
                 f"Saved {name}: {rows[0]['total_ms']} ms, "
-                f"{rows[0]['total_gflops']} GFLOP/s",
+                f"{rows[0]['total_tflops']} TFLOP/s",
                 flush=True,
             )
     if not args.dry_run:

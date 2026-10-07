@@ -47,10 +47,10 @@ python3 demo_ff/sweep.py --sizes 128 256 512 1024 --gpus 2
 ```
 
 The plot (sweep.png next to stats.csv) has four panels: time (top) and
-TFLOP/s (bottom; the CSV stores GFLOP/s), each with the multi-GPU NCCL all-reduce included
-(total_ms / total_gflops, left) and excluded (fflayer_ms / fflayer_gflops,
+TFLOP/s (bottom), each with the multi-GPU NCCL all-reduce included
+(total_ms / total_tflops, left) and excluded (fflayer_ms / fflayer_tflops,
 right). Single-GPU has no all-reduce and uses the total columns throughout.
-Timings are GPU events, not process wall time. GFLOP/s count
+Timings are GPU events, not process wall time. TFLOP/s count
 2*M*N*K per GEMM and M*N for ReLU using the full layer dimensions, so
 multi-GPU values are the aggregate throughput of all ranks (stage times are
 the slowest rank's). all_reduce_fflayer_ms also includes time a rank waits

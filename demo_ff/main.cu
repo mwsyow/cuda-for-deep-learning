@@ -126,7 +126,7 @@ CliOptions parse_cli_arguments(int argc, char *argv[]) {
 
 // Write one summary row; stats contains averages over measured runs, excluding
 // warmup.
-void save_time_statistics_csv(const TimeStats &stats, const GflopsStats &gflops,
+void save_time_statistics_csv(const TimeStats &stats, const TflopsStats &tflops,
                               const CliOptions &options, int world_size) {
   std::ofstream file(options.stats_path);
   if (!file)
@@ -135,8 +135,8 @@ void save_time_statistics_csv(const TimeStats &stats, const GflopsStats &gflops,
   file << "xseed,wseed,in_dim,hidden_dim,seq_len,warmup,num_runs,multi_gpu,"
           "world_size,"
           "X_w1_ms,X_relu_ms,X_w2_ms,fflayer_ms,all_reduce_fflayer_ms,total_"
-          "ms,X_w1_gflops,X_relu_gflops,X_w2_gflops,fflayer_gflops,total_"
-          "gflops\n";
+          "ms,X_w1_tflops,X_relu_tflops,X_w2_tflops,fflayer_tflops,total_"
+          "tflops\n";
   file << std::setprecision(std::numeric_limits<float>::max_digits10)
        << options.xseed << ',' << options.wseed << ',' << options.in_dim << ','
        << options.hidden_dim << ',' << options.seq_len << ',' << options.warmup
@@ -144,8 +144,8 @@ void save_time_statistics_csv(const TimeStats &stats, const GflopsStats &gflops,
        << (options.multi_gpu ? "true" : "false") << ',' << world_size << ','
        << stats.X_w1 << ',' << stats.X_relu << ',' << stats.X_w2 << ','
        << stats.fflayer << ',' << stats.all_reduce_fflayer << ',' << stats.total
-       << ',' << gflops.X_w1 << ',' << gflops.X_relu << ',' << gflops.X_w2
-       << ',' << gflops.fflayer << ',' << gflops.total << '\n';
+       << ',' << tflops.X_w1 << ',' << tflops.X_relu << ',' << tflops.X_w2
+       << ',' << tflops.fflayer << ',' << tflops.total << '\n';
   file.close();
   if (!file)
     throw std::runtime_error("Failed to write stats file: " +
@@ -350,12 +350,12 @@ int main(int argc, char *argv[]) {
     avg_stats.all_reduce_fflayer /= options.num_runs;
     avg_stats.total /= options.num_runs;
     std::cout << "Average over " << options.num_runs << " measured runs\n";
-    const GflopsStats gflops = compute_gflops(
+    const TflopsStats tflops = compute_tflops(
         avg_stats, options.in_dim, options.hidden_dim, options.seq_len);
-    print_time_statistics(avg_stats, gflops);
+    print_time_statistics(avg_stats, tflops);
     if (options.save_stats) {
       try {
-        save_time_statistics_csv(avg_stats, gflops, options, world_size);
+        save_time_statistics_csv(avg_stats, tflops, options, world_size);
         std::cout << "Saved timing statistics to " << options.stats_path
                   << '\n';
       } catch (const std::exception &error) {
