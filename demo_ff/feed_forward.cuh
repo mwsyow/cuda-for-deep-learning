@@ -60,11 +60,8 @@ void weights_to_half(float *src, half *dst, uint size) {
   }
 }
 
-void to_device(FFLayer<float> &host, FFLayer<half> &device, uint seq_len) {
-
-  device.in_dim = host.in_dim;
-  device.hidden_dim = host.hidden_dim;
-
+void to_device(FFLayer<float> &host, FFLayer<half> &device,
+               const uint seq_len) {
   CUDA_CHECK(
       cudaMalloc(&device.W1, device.hidden_dim * device.in_dim * sizeof(half)));
   CUDA_CHECK(

@@ -11,9 +11,9 @@
 #include <exception>
 #include <fstream>
 #include <iomanip>
-#include <locale>
 #include <iostream>
 #include <limits>
+#include <locale>
 #include <mpi.h>
 #include <nccl.h>
 #include <stdexcept>
@@ -35,20 +35,22 @@ struct CliOptions {
 };
 
 void print_usage(const char *program) {
-  std::cout << "Usage: " << program << " [options]\n"
-            << "  --xseed N          Input seed (default: 7)\n"
-            << "  --wseed N          Weight seed (default: 42)\n"
-            << "  --in_dim N         Input width (default: 128)\n"
-            << "  --hidden_dim N     Hidden width (default: 512)\n"
-            << "  --seq_len N        Sequence length (default: 64)\n"
-            << "  --warmup N         Warmup iterations (default: 1)\n"
-            << "  --num_runs N       Number of run iterations (default: 1)\n"
-            << "  --multi_gpu BOOL   true/false or 1/0 (default: false)\n"
-            << "  --save_stats BOOL  Save average timings as CSV (default: false)\n"
-            << "  --stats_path PATH  CSV output file, overwritten (default: stats.csv)\n"
-            << "  --help             Show this help\n"
-            << "Options accept --name value or --name=value; hyphens and "
-               "underscores are accepted.\n";
+  std::cout
+      << "Usage: " << program << " [options]\n"
+      << "  --xseed N          Input seed (default: 7)\n"
+      << "  --wseed N          Weight seed (default: 42)\n"
+      << "  --in_dim N         Input width (default: 128)\n"
+      << "  --hidden_dim N     Hidden width (default: 512)\n"
+      << "  --seq_len N        Sequence length (default: 64)\n"
+      << "  --warmup N         Warmup iterations (default: 1)\n"
+      << "  --num_runs N       Number of run iterations (default: 1)\n"
+      << "  --multi_gpu BOOL   true/false or 1/0 (default: false)\n"
+      << "  --save_stats BOOL  Save average timings as CSV (default: false)\n"
+      << "  --stats_path PATH  CSV output file, overwritten (default: "
+         "stats.csv)\n"
+      << "  --help             Show this help\n"
+      << "Options accept --name value or --name=value; hyphens and "
+         "underscores are accepted.\n";
 }
 
 CliOptions parse_cli_arguments(int argc, char *argv[]) {
@@ -78,12 +80,14 @@ CliOptions parse_cli_arguments(int argc, char *argv[]) {
       value = argv[++i];
     }
     if (name == "--stats_path") {
-      if (value.empty()) throw std::invalid_argument("--stats_path must not be empty");
+      if (value.empty())
+        throw std::invalid_argument("--stats_path must not be empty");
       options.stats_path = value;
       continue;
     }
     if (name == "--multi_gpu" || name == "--save_stats") {
-      bool &flag = name == "--multi_gpu" ? options.multi_gpu : options.save_stats;
+      bool &flag =
+          name == "--multi_gpu" ? options.multi_gpu : options.save_stats;
       if (value == "true" || value == "1")
         flag = true;
       else if (value == "false" || value == "0")
@@ -120,23 +124,30 @@ CliOptions parse_cli_arguments(int argc, char *argv[]) {
   return options;
 }
 
-// Write one summary row; stats contains averages over measured runs, excluding warmup.
+// Write one summary row; stats contains averages over measured runs, excluding
+// warmup.
 void save_time_statistics_csv(const TimeStats &stats, const CliOptions &options,
                               int world_size) {
   std::ofstream file(options.stats_path);
-  if (!file) throw std::runtime_error("Cannot open stats file: " + options.stats_path);
+  if (!file)
+    throw std::runtime_error("Cannot open stats file: " + options.stats_path);
   file.imbue(std::locale::classic());
-  file << "xseed,wseed,in_dim,hidden_dim,seq_len,warmup,num_runs,multi_gpu,world_size,"
-          "X_w1_ms,X_relu_ms,X_w2_ms,fflayer_ms,all_reduce_fflayer_ms,total_ms\n";
+  file << "xseed,wseed,in_dim,hidden_dim,seq_len,warmup,num_runs,multi_gpu,"
+          "world_size,"
+          "X_w1_ms,X_relu_ms,X_w2_ms,fflayer_ms,all_reduce_fflayer_ms,total_"
+          "ms\n";
   file << std::setprecision(std::numeric_limits<float>::max_digits10)
        << options.xseed << ',' << options.wseed << ',' << options.in_dim << ','
-       << options.hidden_dim << ',' << options.seq_len << ',' << options.warmup << ','
-       << options.num_runs << ',' << (options.multi_gpu ? "true" : "false") << ','
-       << world_size << ',' << stats.X_w1 << ',' << stats.X_relu << ','
-       << stats.X_w2 << ',' << stats.fflayer << ',' << stats.all_reduce_fflayer
-       << ',' << stats.total << '\n';
+       << options.hidden_dim << ',' << options.seq_len << ',' << options.warmup
+       << ',' << options.num_runs << ','
+       << (options.multi_gpu ? "true" : "false") << ',' << world_size << ','
+       << stats.X_w1 << ',' << stats.X_relu << ',' << stats.X_w2 << ','
+       << stats.fflayer << ',' << stats.all_reduce_fflayer << ',' << stats.total
+       << '\n';
   file.close();
-  if (!file) throw std::runtime_error("Failed to write stats file: " + options.stats_path);
+  if (!file)
+    throw std::runtime_error("Failed to write stats file: " +
+                             options.stats_path);
 }
 
 int main(int argc, char *argv[]) {
@@ -160,10 +171,14 @@ int main(int argc, char *argv[]) {
   }
 
   if (options.help) {
-    if (rank == 0) print_usage(argv[0]);
+    if (rank == 0)
+      print_usage(argv[0]);
     MPI_Finalize();
     return 0;
   }
+
+  // Assuming this program is run on a single node
+  CUDA_CHECK(cudaSetDevice(rank));
 
   ncclUniqueId ncclCommId;
   ncclComm_t ncclComm;
@@ -180,12 +195,8 @@ int main(int argc, char *argv[]) {
     if (rank == 0)
       NCCL_CHECK(ncclGetUniqueId(&ncclCommId));
     MPI_Bcast(&ncclCommId, sizeof(ncclCommId), MPI_BYTE, 0, MPI_COMM_WORLD);
-
     NCCL_CHECK(ncclCommInitRank(&ncclComm, world_size, ncclCommId, rank));
   }
-
-  // Assuming this program is run on a single node
-  CUDA_CHECK(cudaSetDevice(rank));
 
   //-------------------------------------------------------------------------------
   // Initialization
@@ -195,8 +206,10 @@ int main(int argc, char *argv[]) {
 
   FFLayer<float> ref_layer;
   FFLayer<half> res_layer;
-  FFLayer<half> device_layer;
   FFLayer<half> shard_layer;
+  FFLayer<half> device_layer{};
+  device_layer.hidden_dim = options.hidden_dim;
+  device_layer.in_dim = options.in_dim;
 
   std::vector<float> h_X(options.seq_len * options.in_dim);
   std::vector<half> h_X_half(options.seq_len * options.in_dim);
@@ -215,8 +228,10 @@ int main(int argc, char *argv[]) {
               << std::endl;
     init_ff_layer(ref_layer, options.in_dim, options.hidden_dim,
                   options.seq_len, options.wseed);
+
     std::cout << "Transferring weights and allocating GPU caches" << std::endl;
     to_device(ref_layer, device_layer, options.seq_len);
+
     std::cout << "Creating input" << std::endl;
     std::mt19937 gen(options.xseed);
     std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
@@ -259,7 +274,8 @@ int main(int argc, char *argv[]) {
     //-------------------------------------------------------------------------------
     // Warming up on single GPU
     //-------------------------------------------------------------------------------
-    std::cout << "Single-GPU warmup: " << options.warmup << " iterations" << std::endl;
+    std::cout << "Single-GPU warmup: " << options.warmup << " iterations"
+              << std::endl;
     for (uint i = 0; i < options.warmup; i++) {
       if (rank == 0)
         std::cout << "  Warmup " << i + 1 << "/" << options.warmup << std::endl;
@@ -271,16 +287,17 @@ int main(int argc, char *argv[]) {
     // Warming up on multi GPUs
     //-------------------------------------------------------------------------------
     if (rank == 0)
-      std::cout << "Multi-GPU warmup: " << options.warmup << " iterations across "
-                << world_size << " ranks" << std::endl;
+      std::cout << "Multi-GPU warmup: " << options.warmup
+                << " iterations across " << world_size << " ranks" << std::endl;
     for (uint i = 0; i < options.warmup; i++) {
       if (rank == 0)
         std::cout << "  Warmup " << i + 1 << "/" << options.warmup << std::endl;
       run_ff_layer_multi_gpus(context, shard_layer, d_X, d_Res, options.seq_len,
                               stats, ncclComm);
     }
-    if (rank == 0) std::cout << "Gathering intermediate results for correctness check"
-              << std::endl;
+    if (rank == 0)
+      std::cout << "Gathering intermediate results for correctness check"
+                << std::endl;
     unsharding_intermediate_results(shard_layer, device_layer, options.seq_len,
                                     rank, ncclComm, stream);
   }
@@ -298,7 +315,8 @@ int main(int argc, char *argv[]) {
   // Running Demo
   //-------------------------------------------------------------------------------
   if (rank == 0)
-    std::cout << "Measured feed-forward runs: " << options.num_runs << std::endl;
+    std::cout << "Measured feed-forward runs: " << options.num_runs
+              << std::endl;
   for (uint i = 0; i < options.num_runs; i++) {
     if (rank == 0)
       std::cout << "  Run " << i + 1 << "/" << options.num_runs << std::endl;
@@ -331,7 +349,8 @@ int main(int argc, char *argv[]) {
     if (options.save_stats) {
       try {
         save_time_statistics_csv(avg_stats, options, world_size);
-        std::cout << "Saved timing statistics to " << options.stats_path << '\n';
+        std::cout << "Saved timing statistics to " << options.stats_path
+                  << '\n';
       } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';
         exit_status = 1;
@@ -342,10 +361,13 @@ int main(int argc, char *argv[]) {
   //-------------------------------------------------------------------------------
   // Teardown
   //-------------------------------------------------------------------------------
-  if (rank == 0) std::cout << "\nReleasing feed-forward layers and CUDA resources..." << std::endl;
-  free_device_ff_layer(device_layer);
-  free_host_ff_layer(ref_layer);
-  free_host_ff_layer(res_layer);
+  if (rank == 0) {
+    std::cout << "\nReleasing feed-forward layers and CUDA resources..."
+              << std::endl;
+    free_device_ff_layer(device_layer);
+    free_host_ff_layer(ref_layer);
+    free_host_ff_layer(res_layer);
+  }
 
   CUBLAS_CHECK(cublasDestroy(cublasHandle));
   CUDA_CHECK(cudaStreamDestroy(stream));
@@ -358,6 +380,7 @@ int main(int argc, char *argv[]) {
   }
   MPI_Finalize();
 
-  if (rank == 0) std::cout << "Feed-forward demo finished" << std::endl;
+  if (rank == 0)
+    std::cout << "Feed-forward demo finished" << std::endl;
   return exit_status;
 }

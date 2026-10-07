@@ -1,6 +1,6 @@
 NVCC ?= nvcc
 MPICXX ?= mpicxx
-NVCCFLAGS ?= -O2 -std=c++17
+NVCCFLAGS ?= -O2 -std=c++20
 MPI_CFLAGS := $(shell $(MPICXX) --showme:compile)
 MPI_LIBS := $(shell $(MPICXX) --showme:link)
 HEADERS := $(wildcard *.cuh kernels/*.cuh)
