@@ -68,8 +68,9 @@ void reduce_time_statistics(TimeStats &stats, const int rank) {
   send_buff[4] = stats.all_reduce_fflayer;
   send_buff[5] = stats.total;
 
-  MPI_Reduce(send_buff.data(), recv_buff.data(), sizeof(TimeStats), MPI_BYTE,
-             MPI_MAX, 0, MPI_COMM_WORLD);
+  MPI_Reduce(send_buff.data(), recv_buff.data(),
+             static_cast<int>(send_buff.size()), MPI_FLOAT, MPI_MAX, 0,
+             MPI_COMM_WORLD);
 
   if (rank == 0) {
     stats.X_w1 = recv_buff[0];
