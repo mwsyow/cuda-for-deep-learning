@@ -82,25 +82,46 @@ void reduce_time_statistics(TimeStats &stats, const int rank) {
   }
 }
 
-void print_time_statistics(const TimeStats &stats) {
+// FLOPs use the full layer dimensions: in multi-GPU runs each rank computes a
+// hidden_dim / world_size shard, and the reduced times are the slowest rank's,
+// so the result is the aggregate throughput of all GPUs.
+GflopsStats compute_gflops(const TimeStats &stats, const uint in_dim,
+                           const uint hidden_dim, const uint seq_len) {
+  const double gemm_flops = 2.0 * seq_len * hidden_dim * in_dim;
+  const double relu_flops = static_cast<double>(seq_len) * hidden_dim;
+  const double fflayer_flops = 2.0 * gemm_flops + relu_flops;
+  auto gflops = [](double flops, float ms) {
+    return ms > 0.0f ? static_cast<float>(flops / (ms * 1e6)) : 0.0f;
+  };
+  return {gflops(gemm_flops, stats.X_w1), gflops(relu_flops, stats.X_relu),
+          gflops(gemm_flops, stats.X_w2), gflops(fflayer_flops, stats.fflayer),
+          gflops(fflayer_flops, stats.total)};
+}
+
+void print_time_statistics(const TimeStats &stats, const GflopsStats &gflops) {
   const auto previous_flags = std::cout.flags();
   const auto previous_precision = std::cout.precision();
-  auto print = [&](const char *name, float ms) {
+  auto print = [&](const char *name, float ms, float gflop_s) {
     std::cout << "  " << std::left << std::setw(30) << name << std::right
-              << std::setw(12) << ms << " ms\n";
+              << std::setw(12) << ms << " ms" << std::setw(14);
+    if (gflop_s >= 0.0f)
+      std::cout << gflop_s << " GFLOP/s\n";
+    else
+      std::cout << "-" << '\n';
   };
 
   std::cout << "\n=== Average GPU timing breakdown ===\n"
-            << "Measured runs only; warmup excluded. Synchronization after each stage.\n\n"
+            << "Measured runs only; warmup excluded. Synchronization after each stage.\n"
+            << "GFLOP/s: GEMM 2*M*N*K, ReLU M*N, full layer dimensions.\n\n"
             << std::fixed << std::setprecision(3);
   std::cout << "\nFeed-forward\n";
-  print("Hidden expansion (W1)", stats.X_w1);
-  print("ReLU activation", stats.X_relu);
-  print("Output projection (W2)", stats.X_w2);
-  print("Feed-forward subtotal", stats.fflayer);
-  print("Feed-forward all reduce", stats.all_reduce_fflayer);
-  std::cout << "  ---------------------------------------------\n";
-  print("Feed-forward total", stats.total);
+  print("Hidden expansion (W1)", stats.X_w1, gflops.X_w1);
+  print("ReLU activation", stats.X_relu, gflops.X_relu);
+  print("Output projection (W2)", stats.X_w2, gflops.X_w2);
+  print("Feed-forward subtotal", stats.fflayer, gflops.fflayer);
+  print("Feed-forward all reduce", stats.all_reduce_fflayer, -1.0f);
+  std::cout << "  -----------------------------------------------------------\n";
+  print("Feed-forward total", stats.total, gflops.total);
   std::cout.flags(previous_flags);
   std::cout.precision(previous_precision);
 }

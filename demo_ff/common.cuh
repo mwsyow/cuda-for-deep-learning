@@ -44,6 +44,16 @@ struct TimeStats {
   float total;
 };
 
+// Aggregate throughput in GFLOP/s, derived from the final (rank-maximum,
+// run-averaged) TimeStats. The all-reduce performs no counted FLOPs.
+struct GflopsStats {
+  float X_w1;
+  float X_relu;
+  float X_w2;
+  float fflayer;
+  float total;
+};
+
 struct DeviceContext {
   cudaStream_t stream;
   cublasHandle_t handle;

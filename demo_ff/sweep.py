@@ -90,7 +90,11 @@ def main():
                     writer.writeheader()
                 writer.writerows(rows)
             first_result = False
-            print(f"Saved {name}: {rows[0]['total_ms']} ms", flush=True)
+            print(
+                f"Saved {name}: {rows[0]['total_ms']} ms, "
+                f"{rows[0]['total_gflops']} GFLOP/s",
+                flush=True,
+            )
     if not args.dry_run:
         print(f"Combined results: {aggregate}")
 
